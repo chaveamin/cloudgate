@@ -180,7 +180,12 @@ if (
     && isset($_POST['action']) && $_POST['action'] === 'send'
     && cloudgate_is_enabled('enable_contact')
 ) {
-    if (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
+    $ip = cloudgate_get_ip();
+    if (cloudgate_is_rate_limited($ip)) {
+        cloudgate_log_failure('contact');
+        unset($_POST['action']);
+        $_REQUEST['action'] = '';
+    } elseif (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
         cloudgate_log_failure('contact');
         unset($_POST['action']);
         $_REQUEST['action'] = '';
@@ -205,8 +210,15 @@ if (
         && is_string($_POST['username']) && is_string($_POST['password'])
         && $_POST['username'] !== '' && $_POST['password'] !== ''
     ) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('login');
+            header('Location: login.php?error=captcha');
+            exit;
+        }
         $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
         if ($token === '' || !cloudgate_verify($token)) {
+            cloudgate_log_failure('login');
             header('Location: login.php?error=captcha');
             exit;
         }
@@ -230,6 +242,12 @@ if (
     if (strpos($path, '/admin/') === false && strpos($path, '\\admin\\') === false
         && ($script === 'index.php' || $script === 'pwreset.php')
     ) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('pwreset');
+            header('Location: pwreset.php?error=captcha');
+            exit;
+        }
         $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
         if ($token === '' || !cloudgate_verify($token)) {
             cloudgate_log_failure('pwreset');
@@ -538,6 +556,11 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
 // Login Validation
 add_hook('UserLoginVerification', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_login')) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('login');
+            return cloudgate_text('error');
+        }
         $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
         if ($token === '' || !cloudgate_verify($token)) {
             cloudgate_log_failure('login');
@@ -549,6 +572,11 @@ add_hook('UserLoginVerification', 1, function ($vars) {
 // Registration Validation
 add_hook('ClientDetailsValidation', 1, function ($vars) {
     if (!isset($_SESSION['uid']) && cloudgate_is_enabled('enable_register')) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('register');
+            return [cloudgate_text('error')];
+        }
         if (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
             cloudgate_log_failure('register');
             return [cloudgate_text('error')];
@@ -559,6 +587,11 @@ add_hook('ClientDetailsValidation', 1, function ($vars) {
 // Shopping Cart Validation
 add_hook('ShoppingCartValidateCheckout', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_cart')) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('cart');
+            return cloudgate_text('error');
+        }
         if (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
             cloudgate_log_failure('cart');
             return cloudgate_text('error');
@@ -569,6 +602,11 @@ add_hook('ShoppingCartValidateCheckout', 1, function ($vars) {
 // Ticket Validation
 add_hook('TicketOpenValidation', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_ticket')) {
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('ticket');
+            return cloudgate_text('error');
+        }
         if (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
             cloudgate_log_failure('ticket');
             return cloudgate_text('error');
@@ -581,7 +619,14 @@ add_hook('ClientAreaPageContact', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_contact') && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isset($_POST['action']) || $_POST['action'] !== 'send') return;
 
+        $ip = cloudgate_get_ip();
+        if (cloudgate_is_rate_limited($ip)) {
+            cloudgate_log_failure('contact');
+            header("Location: contact.php?error=captcha");
+            exit;
+        }
         if (!isset($_POST['cf-turnstile-response']) || !cloudgate_verify($_POST['cf-turnstile-response'])) {
+            cloudgate_log_failure('contact');
             header("Location: contact.php?error=captcha");
             exit;
         }

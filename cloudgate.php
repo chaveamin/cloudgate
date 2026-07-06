@@ -53,7 +53,8 @@ function cloudgate_output($vars)
         'site_key', 'secret_key', 'theme', 'size',
         'enable_login', 'enable_register', 'enable_pwreset', 'enable_contact', 'enable_ticket', 'enable_cart',
         'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel',
-        'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart'
+        'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart',
+        'rate_limit_enabled', 'rate_limit_max', 'rate_limit_window'
     ];
 
     // Handle AJAX: test keys
@@ -147,7 +148,7 @@ function cloudgate_output($vars)
         .cloudgate-header .links {display: flex; align-items: center; gap: 12px; }
         
         /* Switch UI */
-        .toggle-row { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid oklch(0.2103 0.0059 285.89 / 5%); }
+        .toggle-row { display: flex; align-items: center; padding: 12px 0; gap: 12px; border-bottom: 1px solid oklch(0.2103 0.0059 285.89 / 5%); }
         .toggle-row span { font-size: 16px; font-weight: 500; }
         .toggle-row:last-child { border-bottom: none; }
         .switch { position: relative; display: inline-block; width: 46px; height: 26px; margin-bottom: 0; }
@@ -194,7 +195,7 @@ function cloudgate_output($vars)
                 <small>نسخه ' . $vars['version'] . '</small>
             </div>
         </header>
-        <form method="post" action=">
+        <form method="post" action="">
             <input type="hidden" name="action" value="save">
             
             <div class="cloudgate-card">
@@ -337,6 +338,32 @@ function cloudgate_output($vars)
                     <div class="form-group">
                         <label>انتخابگر فرم سبد خرید</label>
                         <input type="text" name="custom_cart_sel" value="' . htmlspecialchars($settings['custom_cart_sel']) . '">
+                    </div>
+                </div>
+            </div>
+
+            <div class="cloudgate-card">
+                <h3>درخواست‌ها</h3>
+
+                <div class="toggle-row">
+                    <span>فعال‌سازی محدودیت درخواست‌ها</span>
+                    <label class="switch">
+                        <input type="checkbox" name="rate_limit_enabled" ' . ($settings['rate_limit_enabled'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <p class="help-block">جلوگیری از اتک‌ها با محدود کردن تعداد تلاش‌های ناموفق از یک آدرس آی پی</p>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>حداکثر تلاش ناموفق</label>
+                        <input type="text" name="rate_limit_max" value="' . htmlspecialchars($settings['rate_limit_max'] ?: '5') . '" placeholder="5">
+                        <small>تعداد تلاش‌های ناموفق مجاز در بازه زمانی</small>
+                    </div>
+                    <div class="form-group">
+                        <label>بازه زمانی (دقیقه)</label>
+                        <input type="text" name="rate_limit_window" value="' . htmlspecialchars($settings['rate_limit_window'] ?: '5') . '" placeholder="5">
+                        <small>پنجره زمانی برای شمارش تلاش‌ها</small>
                     </div>
                 </div>
             </div>

@@ -28,25 +28,55 @@
 
 ## پیکربندی
 
-**پیکربندی API**
+## تنظیمات کلی
 
-| Key         | پیشفرض   | گزینه‌ها                  |
-| ----------- | -------- | ------------------------- |
-| Site Key    | —        | \*                        |
-| Secret Key  | —        | \*                        |
-| تم          | `auto`   | `auto` / `light` / `dark` |
-| اندازه ویجت | `normal` | `normal` / `compact`      |
+| کلید         | مقدار پیشفرض | گزینه‌ها                  |
+| ------------ | ------------ | ------------------------- |
+| `site_key`   | خالی         | \*                        |
+| `secret_key` | خالی         | \*                        |
+| `theme`      | `auto`       | `auto` · `light` · `dark` |
+| `size`       | `normal`     | `normal` · `compact`      |
 
-**انتخاب صفحات**
+## فعال‌سازی صفحات
 
-| صفحه              | پیشفرض | حالت پیشفرض |
-| ----------------- | ------ | ----------- |
-| ورود              | off    | `managed`   |
-| ثبت نام           | off    | `managed`   |
-| بازنشانی رمز عبور | off    | `managed`   |
-| ارتباط            | off    | `managed`   |
-| ارسال تیکت        | off    | `managed`   |
-| سبد خرید          | off    | `managed`   |
+| صفحه         | کلید فعال‌سازی    | حالت پیشفرض |
+| ------------ | ----------------- | ----------- |
+| ورود         | `enable_login`    | غیرفعال     |
+| ثبت‌نام      | `enable_register` | غیرفعال     |
+| بازنشانی رمز | `enable_pwreset`  | غیرفعال     |
+| ارتباط       | `enable_contact`  | غیرفعال     |
+| تیکت         | `enable_ticket`   | غیرفعال     |
+| سبد خرید     | `enable_cart`     | غیرفعال     |
+
+## mode\_ تنظیمات
+
+| صفحه         | کلید            | مقدار پیشفرض | گزینه‌ها                                    |
+| ------------ | --------------- | ------------ | ------------------------------------------- |
+| ورود         | `mode_login`    | `managed`    | `managed` · `non-interactive` · `invisible` |
+| ثبت‌نام      | `mode_register` | `managed`    | `managed` · `non-interactive` · `invisible` |
+| بازنشانی رمز | `mode_pwreset`  | `managed`    | `managed` · `non-interactive` · `invisible` |
+| ارتباط       | `mode_contact`  | `managed`    | `managed` · `non-interactive` · `invisible` |
+| تیکت         | `mode_ticket`   | `managed`    | `managed` · `non-interactive` · `invisible` |
+| سبد خرید     | `mode_cart`     | `managed`    | `managed` · `non-interactive` · `invisible` |
+
+## انتخابگرهای سفارشی
+
+| صفحه         | کلید                  |
+| ------------ | --------------------- |
+| ورود         | `custom_login_sel`    |
+| ثبت‌نام      | `custom_register_sel` |
+| بازنشانی رمز | `custom_pwreset_sel`  |
+| ارتباط       | `custom_contact_sel`  |
+| تیکت         | `custom_ticket_sel`   |
+| سبد خرید     | `custom_cart_sel`     |
+
+## محدودیت درخواست
+
+| کلید                 | مقدار پیشفرض | توضیح                    |
+| -------------------- | ------------ | ------------------------ |
+| `rate_limit_enabled` | غیرفعال      | فعال‌سازی محدودیت نرخ    |
+| `rate_limit_max`     | `5`          | حداکثر تلاش ناموفق مجاز  |
+| `rate_limit_window`  | `5`          | بازه زمانی شمارش (دقیقه) |
 
 ## نکته مهم
 
