@@ -1,0 +1,353 @@
+<?php
+
+use WHMCS\Database\Capsule;
+use WHMCS\Config\Setting;
+
+if (!defined("WHMCS")) {
+    die("This file cannot be accessed directly");
+}
+
+function cloudgate_config()
+{
+    return [
+        'name' => 'کلودگیت',
+        'description' => 'مدیریت ویجت کپچای کلودفلر(turnstile)',
+        'author' => 'Amin Chavepour',
+        'language' => 'farsi',
+        'version' => '1.0.0',
+        'fields' => []
+    ];
+}
+
+function cloudgate_activate()
+{
+    try {
+        Capsule::schema()->create('mod_cloudgate_logs', function ($table) {
+            $table->increments('id');
+            $table->string('page', 50);
+            $table->string('ip', 45);
+            $table->string('user_agent', 255)->nullable();
+            $table->timestamp('created_at')->useCurrent();
+            $table->index(['page', 'created_at']);
+        });
+    } catch (\Exception $e) {
+        return ['status' => 'error', 'description' => 'خطا در ساخت جدول: ' . $e->getMessage()];
+    }
+
+    return ['status' => 'success', 'description' => 'ماژول کلودگیت با موفقیت فعال شد.'];
+}
+
+function cloudgate_deactivate()
+{
+    try {
+        Capsule::schema()->dropIfExists('mod_cloudgate_logs');
+    } catch (\Exception $e) {}
+
+    return ['status' => 'success', 'description' => 'ماژول کلودگیت با موفقیت غیرفعال شد.'];
+}
+
+function cloudgate_output($vars)
+{
+    $moduleName = 'cloudgate';
+    $validSettings = [
+        'site_key', 'secret_key', 'theme', 'size',
+        'enable_login', 'enable_register', 'enable_pwreset', 'enable_contact', 'enable_ticket', 'enable_cart',
+        'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel',
+        'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart'
+    ];
+
+    // Handle AJAX: test keys
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_keys') {
+        header('Content-Type: application/json');
+
+        $secret = isset($_POST['secret_key']) ? trim($_POST['secret_key']) : cloudgate_get_setting('secret_key');
+
+        if (!$secret) {
+            echo json_encode(['ok' => false, 'message' => 'Secret Key وارد نشده است.']);
+            exit;
+        }
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+            'secret'   => $secret,
+            'response' => 'fake_token_for_validation',
+        ]));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+        $result = curl_exec($ch);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError) {
+            echo json_encode(['ok' => false, 'message' => 'خطای شبکه: ' . $curlError]);
+            exit;
+        }
+
+        $json = json_decode($result, true);
+        $errors = $json['error-codes'] ?? [];
+
+        if (in_array('invalid-input-secret', $errors, true)) {
+            echo json_encode(['ok' => false, 'message' => 'Secret Key نامعتبر است.']);
+        } elseif (in_array('invalid-input-response', $errors, true) || ($json['success'] ?? false)) {
+            echo json_encode(['ok' => true, 'message' => '✓ Secret Key معتبر است.']);
+        } else {
+            $code = implode(', ', $errors) ?: 'unknown';
+            echo json_encode(['ok' => false, 'message' => 'Secret Key نامعتبر است. کد خطا: ' . $code]);
+        }
+        exit;
+    }
+
+    // Handle Save
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save') {
+        foreach ($validSettings as $setting) {
+            $value = isset($_POST[$setting]) ? trim($_POST[$setting]) : '';
+            
+            // Checkbox logic for WHMCS 'yesno' fields
+            if (strpos($setting, 'enable_') === 0) {
+                 $value = ($value === 'on') ? 'on' : '';
+            }
+
+            Capsule::table('tbladdonmodules')->updateOrInsert(
+                ['module' => $moduleName, 'setting' => $setting],
+                ['value' => $value]
+            );
+        }
+        echo '<div class="alert">تنظیمات با موفقیت ذخیره شدند</div>';
+    }
+
+    // Retrieve settings
+    $settings = [];
+    foreach ($validSettings as $key) {
+        $settings[$key] = Capsule::table('tbladdonmodules')->where('module', $moduleName)->where('setting', $key)->value('value');
+    }
+
+    $systemUrl = Setting::getValue('SystemURL');
+    $fontdir = $systemUrl . '/modules/addons/cloudgate/YekanBakh.woff2';
+
+    // Render Form
+    echo '<style>
+        @font-face { font-family: "bakh"; src: url("' . $fontdir . '"); font-weight: 100 900; font-display: fallback; }
+        #contentarea > div > h1:first-child { display: none; }
+        .cloudgate-card, select { height: 100%; background: #fff; padding: 25px; border-radius: 18px; border: 3px solid oklch(0.2103 0.0059 285.89 / 10%); margin-bottom: 20px; }
+        .cloudgate-card h3 { margin-top: 0; border-bottom: 1px solid oklch(0.2103 0.0059 285.89 / 10%); padding-bottom: 15px; margin-bottom: 20px; color: #27272a; font-size: 22px; font-weight: 600; }
+        label { font-size: 15px; display: block; font-weight: 600; margin-bottom: 8px; color: #3f3f46; }
+        input[type="text"], input[type="password"], select { font-family: monospace; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
+        input[type="text"]:focus, input[type="password"]:focus, select:focus { box-shadow: 0 0 0 2px #ff7737; outline: none; }
+        .help-block { color: #888; font-size: 0.85em; margin-top: 5px; }
+        .row { display: flex; align-items: flex-start; column-gap: 24px; }
+        .row > * { width: 100%; }
+        .col-half { flex: 0 0 50%; padding: 0 15px; box-sizing: border-box; }
+        .cloudgate-card, select, .btn-save, small, .alert { font-family: "bakh"; }
+        small { color: #71717a; }
+        .alert { background-color: oklch(0.7681 0.2044 130.85 / 15%); color: oklch(0.5322 0.1405 131.59); border-radius: 12px; text-align: right; font-family: "bakh"; font-weight: 600; }
+        
+        /* Switch UI */
+        .toggle-row { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid oklch(0.2103 0.0059 285.89 / 5%); }
+        .toggle-row span { font-size: 16px; font-weight: 500; }
+        .toggle-row:last-child { border-bottom: none; }
+        .switch { position: relative; display: inline-block; width: 46px; height: 26px; margin-bottom: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #ff5e1f; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        
+        .btn-save { width: 25%; background-color: #ff5e1f; color: #fff; padding: 12px 30px; border: none; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 600; transition: background 0.2s; }
+        .btn-save:hover { background: #f03806; }
+        .actions-row { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; text-align: right; }
+        #cloudgate-test-btn { background: #ff5e1f; color: #fff; padding: 10px 22px; border: none; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 600; font-family: "bakh"; transition: background 0.2s; }
+        #cloudgate-test-btn:hover { background: oklch(21% 0.006 285.885); }
+        #cloudgate-test-result { padding: 10px 16px; border-radius: 10px; font-weight: 600; display: none; }
+        .tg-ok  { background: oklch(84.1% 0.238 128.85 / 20%); color: oklch(53.2% 0.157 131.589); box-shaow: 0 0 0 2px oklch(53.2% 0.157 131.589); }
+        .tg-err { background: oklch(63.7% 0.237 25.331 / 15%); color: oklch(50.5% 0.213 27.518); box-shaow: 0 0 0 2px oklch(50.5% 0.213 27.518); }
+        .tg-loading { background: oklch(44.2% 0.017 285.786 / 10%); color: oklch(37% 0.013 285.805); box-shaow: 0 0 0 2px oklch(37% 0.013 285.805); }
+        .test-key { display: flex; align-items: center; justify-content: space-between; }
+        .test-emphasis { margin-top: 8px; font-size: 12px; color: oklch(70.5% 0.015 286.067); }
+        .mode-select { margin: 0 auto 0 48px; width:auto; padding:6px 10px; }
+        @media screen and (max-width: 750px) { .row { flex-direction: column; } .btn-save { width: 100%; } .actions-row { flex-direction: column; row-gap: 16px; } }
+    </style>';
+
+    echo '<form method="post" action="" dir="rtl">
+        <input type="hidden" name="action" value="save">
+        
+        <div class="cloudgate-card">
+            <h3>پیکربندی API</h3>
+            <div class="row">
+                <div class="form-group">
+                    <label>Site Key</label>
+                    <input type="text" name="site_key" value="' . htmlspecialchars($settings['site_key']) . '" placeholder="0x4AAAAAA..." autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" name="secret_key" value="' . htmlspecialchars($settings['secret_key']) . '" placeholder="0x4AAAAAA..." autocomplete="off">
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label>تم</label>
+                    <select name="theme">
+                        <option value="auto" ' . ($settings['theme'] == 'auto' ? 'selected' : '') . '>خودکار</option>
+                        <option value="light" ' . ($settings['theme'] == 'light' ? 'selected' : '') . '>روشن</option>
+                        <option value="dark" ' . ($settings['theme'] == 'dark' ? 'selected' : '') . '>تاریک</option>
+                    </select>                
+                </div>
+                <div class="form-group">
+                    <label>اندازه ویجت</label>
+                    <select name="size">
+                        <option value="normal" '  . ($settings['size'] == 'normal'  ? 'selected' : '') . '>Normal</option>
+                        <option value="compact" ' . ($settings['size'] == 'compact' ? 'selected' : '') . '>Compact</option>
+                    </select>
+                </div>            
+            </div>
+            <div class="test-key">
+                <button type="button" id="cloudgate-test-btn" onclick="cloudgateTestKeys()">تست اتصال API</button>
+                <div id="cloudgate-test-result"></div>
+            </div>
+            <em class="test-emphasis">تست اتصال ممکن است در برخی اپراتورها با خطا مواجه شود</em>
+        </div>
+
+        <div class="row">
+            <div class="cloudgate-card">
+                <h3>تنظیمات نمایش ویجت</h3>
+                <div class="toggle-row">
+                    <span>نمایش در صفحه ورود</span>
+                    <select class="mode-select" name="mode_login">
+                        <option value="managed" '  . ($settings['mode_login']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_login'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_login'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_login" ' . ($settings['enable_login'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                    <div class="toggle-row">
+                    <span>نمایش در صفحه ثبت‌نام</span>
+                    <select class="mode-select" name="mode_register">
+                        <option value="managed" '  . ($settings['mode_register']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_register'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_register'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_register" ' . ($settings['enable_register'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                    <div class="toggle-row">
+                    <span>نمایش در صفحه بازنشانی رمز عبور</span>
+                    <select class="mode-select" name="mode_pwreset">
+                        <option value="managed" '  . ($settings['mode_pwreset']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_pwreset'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_pwreset'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_pwreset" ' . ($settings['enable_pwreset'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                    <div class="toggle-row">
+                    <span>نمایش در صفحه ارتباط</span>
+                    <select class="mode-select" name="mode_contact">
+                        <option value="managed" '  . ($settings['mode_contact']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_contact'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_contact'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_contact" ' . ($settings['enable_contact'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                    <div class="toggle-row">
+                    <span>نمایش در صفحه ارسال تیکت</span>
+                    <select class="mode-select" name="mode_ticket">
+                        <option value="managed" '  . ($settings['mode_ticket']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_ticket'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_ticket'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_ticket" ' . ($settings['enable_ticket'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                    <div class="toggle-row">
+                    <span>نمایش در صفحه سبد خرید</span>
+                    <select class="mode-select" name="mode_cart">
+                        <option value="managed" '  . ($settings['mode_cart']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                        <option value="non-interactive" ' . ($settings['mode_cart'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                        <option value="invisible" ' . ($settings['mode_cart'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                    </select>                        
+                    <label class="switch">
+                        <input type="checkbox" name="enable_cart" ' . ($settings['enable_cart'] == 'on' ? 'checked' : '') . '>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="cloudgate-card">
+                <h3>تنظیمات پیشرفته</h3>
+                <p class="help-block">برای تزریق خودکار ویجت قبل از عناصر خاص، انتخابگر css (مثلاً .btn-submit) را وارد کنید. برای استفاده از تشخیص خودکار، آن را خالی بگذارید.</p>
+                
+                <div class="form-group">
+                    <label>انتخابگر فرم ورود</label>
+                    <input type="text" name="custom_login_sel" value="' . htmlspecialchars($settings['custom_login_sel']) . '">
+                </div>
+                <div class="form-group">
+                    <label>انتخابگر فرم ثبت‌نام</label>
+                    <input type="text" name="custom_register_sel" value="' . htmlspecialchars($settings['custom_register_sel']) . '">
+                </div>
+                <div class="form-group">
+                    <label>انتخابگر فرم بازنشانی رمز عبور</label>
+                    <input type="text" name="custom_pwreset_sel" value="' . htmlspecialchars($settings['custom_pwreset_sel']) . '">
+                </div>
+                <div class="form-group">
+                    <label>انتخابگر فرم ارتباط</label>
+                    <input type="text" name="custom_contact_sel" value="' . htmlspecialchars($settings['custom_contact_sel']) . '">
+                </div>
+                <div class="form-group">
+                    <label>انتخابگر فرم ارسال تیکت</label>
+                    <input type="text" name="custom_ticket_sel" value="' . htmlspecialchars($settings['custom_ticket_sel']) . '">
+                </div>
+                <div class="form-group">
+                    <label>انتخابگر فرم سبد خرید</label>
+                    <input type="text" name="custom_cart_sel" value="' . htmlspecialchars($settings['custom_cart_sel']) . '">
+                </div>
+            </div>
+        </div>
+
+        <div class="actions-row">
+            <button type="submit" class="btn-save">ذخیره تنظیمات</button>
+            <small>نسخه ' . $vars['version'] . '</small>
+        </div>
+
+        <script>
+            function cloudgateTestKeys() {
+                var btn = document.getElementById("cloudgate-test-btn");
+                var box = document.getElementById("cloudgate-test-result");
+                var secret = document.querySelector("[name=secret_key]").value.trim();
+
+                btn.disabled = true;
+                box.className = "tg-loading";
+                box.style.display = "block";
+                box.textContent = "در حال بررسی...";
+
+                fetch(window.location.href, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: "action=test_keys&secret_key=" + encodeURIComponent(secret)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    box.className = data.ok ? "tg-ok" : "tg-err";
+                    box.textContent = data.message;
+                })
+                .catch(function() {
+                    box.className = "tg-err";
+                    box.textContent = "خطای غیرمنتظره در ارسال درخواست.";
+                })
+                .finally(function() { btn.disabled = false; });
+            }
+        </script>
+    </form>';
+}
