@@ -48,6 +48,7 @@
 | ارتباط       | `enable_contact`  | غیرفعال     |
 | تیکت         | `enable_ticket`   | غیرفعال     |
 | سبد خرید     | `enable_cart`     | غیرفعال     |
+| بررسی دامنه  | `enable_domain`   | غیرفعال     |
 
 **تنظیمات**
 
@@ -59,6 +60,7 @@
 | ارتباط       | `mode_contact`  | `managed`    | `managed` · `non-interactive` · `invisible` |
 | تیکت         | `mode_ticket`   | `managed`    | `managed` · `non-interactive` · `invisible` |
 | سبد خرید     | `mode_cart`     | `managed`    | `managed` · `non-interactive` · `invisible` |
+| بررسی دامنه  | `mode_domain`   | `managed`    | `managed` · `non-interactive` · `invisible` |
 
 **انتخابگرهای سفارشی**
 
@@ -70,6 +72,7 @@
 | ارتباط       | `custom_contact_sel`  |
 | تیکت         | `custom_ticket_sel`   |
 | سبد خرید     | `custom_cart_sel`     |
+| بررسی دامنه  | `custom_domain_sel`   |
 
 **محدودیت درخواست**
 

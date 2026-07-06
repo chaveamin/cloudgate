@@ -164,6 +164,36 @@ function cloudgate_js_string($key)
     return json_encode(cloudgate_text($key), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 }
 
+// Domain Checker early interception
+if (
+    php_sapi_name() !== 'cli'
+    && (!defined('ADMINAREA') || !ADMINAREA)
+    && isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST'
+    && cloudgate_is_enabled('enable_domain')
+    && (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'domainchecker.php'
+        || (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'cart.php' && isset($_REQUEST['a']) && $_REQUEST['a'] === 'domaincheck'))
+) {
+    $ip = cloudgate_get_ip();
+    if (cloudgate_is_whitelisted($ip)) {
+        // Whitelisted
+    } elseif (cloudgate_is_blacklisted($ip)) {
+        cloudgate_log_failure('domain');
+        header('Location: domainchecker.php?error=captcha');
+        exit;
+    } elseif (cloudgate_is_rate_limited($ip)) {
+        cloudgate_log_failure('domain');
+        header('Location: domainchecker.php?error=captcha');
+        exit;
+    } else {
+        $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
+        if ($token === '' || !cloudgate_verify($token)) {
+            cloudgate_log_failure('domain');
+            header('Location: domainchecker.php?error=captcha');
+            exit;
+        }
+    }
+}
+
 if (
     php_sapi_name() !== 'cli'
     && basename($_SERVER['SCRIPT_NAME'] ?? '') === 'contact.php'
@@ -342,9 +372,6 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
         return false;
     };
 
-    // Note: We can't access $widgetHtml or $getSelector easily inside helper without passing classes or global.
-    // Let's just do inline logic for simplicity.
-
     // Login
     if ($templatefile == 'login' && cloudgate_is_enabled('enable_login')) {
         $widgetHtml = cloudgate_widget_html('login');
@@ -357,7 +384,6 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
                 if (!token) { e.preventDefault(); alert(' . $tsAlertJs . '); return false; }
             });';
         } else {
-            // Default logic including Megatech + WHMCS 8+ routed login (login.php / index.php?rp=.../login/validate)
             $jsCode .= 'if(jQuery(".cloudgate-login-wrap").length) {
                  jQuery(".cloudgate-login-wrap form button[type=\'submit\']").closest("button").before(\'' . $widgetHtml . '\');
             } else {
@@ -543,10 +569,33 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
         $widgetHtml = cloudgate_widget_html('cart');
         $custom = cloudgate_get_setting('custom_cart_sel');
         if($custom) {
-             $jsCode .= 'jQuery("' . $custom . '").before(\'' . $widgetHtml . '\');';
+             $jsCode .= 'jQuery("' . $custom . '").after(\'' . $widgetHtml . '\');';
         } else {
-             $jsCode .= 'jQuery("#btnCompleteOrder").closest("div").before(\'' . $widgetHtml . '\');';
+             $jsCode .= 'jQuery("#btnCompleteOrder").closest("div").after(\'' . $widgetHtml . '\');';
         }
+    }
+
+    // Domain Checker
+    if (($templatefile == 'domainchecker' || $templatefile == 'domainregister' || $filename == 'domainchecker' || $filename == 'cart') && cloudgate_is_enabled('enable_domain')) {
+        $widgetHtml = cloudgate_widget_html('domain');
+        $custom = cloudgate_get_setting('custom_domain_sel');
+        if ($custom) {
+            $jsCode .= 'jQuery("' . addslashes($custom) . '").after(\'' . $widgetHtml . '\');';
+        } else {
+            $jsCode .= 'var $dc = jQuery(".domain-checker-container");
+            if ($dc.length) {
+                $dc.after(\'' . $widgetHtml . '\');
+            }';
+        }
+        $jsCode .= '
+            jQuery("#frmDomainChecker").on("submit", function(e) {
+                var token = jQuery(this).find("[name=\'cf-turnstile-response\']").val();
+                if (!token) {
+                    e.preventDefault();
+                    alert(' . $tsAlertJs . ');
+                    return false;
+                }
+            });';
     }
 
     if ($jsCode) {
@@ -663,4 +712,30 @@ add_hook('ClientAreaPageContact', 1, function ($vars) {
         }
     }
 });
+
+// Domain Checker Validation (AJAX interception)
+if (
+    php_sapi_name() !== 'cli'
+    && (!defined('ADMINAREA') || !ADMINAREA)
+    && cloudgate_is_enabled('enable_domain')
+    && isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST'
+    && (isset($_REQUEST['action']) && $_REQUEST['action'] === 'domaincheck')
+) {
+    $ip = cloudgate_get_ip();
+    if (cloudgate_is_whitelisted($ip)) {
+    } elseif (cloudgate_is_blacklisted($ip) || cloudgate_is_rate_limited($ip)) {
+        cloudgate_log_failure('domain');
+        header('Content-Type: application/json');
+        echo json_encode(['result' => 'error', 'error' => 'Captcha verification failed. Please try again.']);
+        exit;
+    } else {
+        $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
+        if ($token === '' || !cloudgate_verify($token)) {
+            cloudgate_log_failure('domain');
+            header('Content-Type: application/json');
+            echo json_encode(['result' => 'error', 'error' => 'Captcha verification failed. Please try again.']);
+            exit;
+        }
+    }
+}
 

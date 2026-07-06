@@ -51,9 +51,9 @@ function cloudgate_output($vars)
     $moduleName = 'cloudgate';
     $validSettings = [
         'site_key', 'secret_key', 'theme', 'size',
-        'enable_login', 'enable_register', 'enable_pwreset', 'enable_contact', 'enable_ticket', 'enable_cart',
-        'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel',
-        'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart',
+        'enable_login', 'enable_register', 'enable_pwreset', 'enable_contact', 'enable_ticket', 'enable_cart', 'enable_domain',
+        'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel', 'custom_domain_sel',
+        'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart', 'mode_domain',
         'rate_limit_enabled', 'rate_limit_max', 'rate_limit_window',
         'ip_whitelist', 'ip_blacklist'
     ];
@@ -422,9 +422,21 @@ function cloudgate_output($vars)
                             <option value="managed" '  . ($settings['mode_cart']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_cart'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
                             <option value="invisible" ' . ($settings['mode_cart'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
-                        </select>                        
+                        </select>
                         <label class="switch">
                             <input type="checkbox" name="enable_cart" ' . ($settings['enable_cart'] == 'on' ? 'checked' : '') . '>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row">
+                        <span>بررسی دامنه</span>
+                        <select class="mode-select" name="mode_domain">
+                            <option value="managed" '  . ($settings['mode_domain']  == 'managed'        ? 'selected' : '') . '>Managed</option>
+                            <option value="non-interactive" ' . ($settings['mode_domain'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
+                            <option value="invisible" ' . ($settings['mode_domain'] == 'invisible'       ? 'selected' : '') . '>Invisible</option>
+                        </select>
+                        <label class="switch">
+                            <input type="checkbox" name="enable_domain" ' . ($settings['enable_domain'] == 'on' ? 'checked' : '') . '>
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -457,6 +469,10 @@ function cloudgate_output($vars)
                     <div class="form-group">
                         <label>انتخابگر فرم سبد خرید</label>
                         <input type="text" name="custom_cart_sel" value="' . htmlspecialchars($settings['custom_cart_sel']) . '">
+                    </div>
+                    <div class="form-group">
+                        <label>انتخابگر صفحه بررسی دامنه</label>
+                        <input type="text" name="custom_domain_sel" value="' . htmlspecialchars($settings['custom_domain_sel']) . '">
                     </div>
                 </div>
             </div>
