@@ -57,3 +57,59 @@ function cloudgate_is_rate_limited($ip = null)
     $recentFailures = cloudgate_get_failure_count($ip, $windowMinutes);
     return $recentFailures >= $maxAttempts;
 }
+
+function cloudgate_parse_ip_list($raw)
+{
+    $list = [];
+    foreach (explode(',', $raw ?? '') as $entry) {
+        $entry = trim($entry);
+        if ($entry === '') continue;
+        $list[] = $entry;
+    }
+    return $list;
+}
+
+function cloudgate_ip_matches_cidr($ip, $cidr)
+{
+    if (strpos($cidr, '/') === false) {
+        return $ip === $cidr;
+    }
+
+    list($subnet, $mask) = explode('/', $cidr);
+    $mask = (int) $mask;
+
+    if ($mask < 0 || $mask > 32) return false;
+
+    $ipLong = ip2long($ip);
+    $subnetLong = ip2long($subnet);
+
+    if ($ipLong === false || $subnetLong === false) return false;
+
+    $maskLong = -1 << (32 - $mask);
+    return ($ipLong & $maskLong) === ($subnetLong & $maskLong);
+}
+
+function cloudgate_ip_in_list($ip, $listRaw)
+{
+    $list = cloudgate_parse_ip_list($listRaw);
+    foreach ($list as $entry) {
+        if (cloudgate_ip_matches_cidr($ip, $entry)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function cloudgate_is_whitelisted($ip = null)
+{
+    $ip = $ip ?: cloudgate_get_ip();
+    $listRaw = cloudgate_get_setting('ip_whitelist');
+    return cloudgate_ip_in_list($ip, $listRaw);
+}
+
+function cloudgate_is_blacklisted($ip = null)
+{
+    $ip = $ip ?: cloudgate_get_ip();
+    $listRaw = cloudgate_get_setting('ip_blacklist');
+    return cloudgate_ip_in_list($ip, $listRaw);
+}

@@ -172,7 +172,12 @@ if (
     && cloudgate_is_enabled('enable_contact')
 ) {
     $ip = cloudgate_get_ip();
-    if (cloudgate_is_rate_limited($ip)) {
+    if (cloudgate_is_whitelisted($ip)) {
+    } elseif (cloudgate_is_blacklisted($ip)) {
+        cloudgate_log_failure('contact');
+        unset($_POST['action']);
+        $_REQUEST['action'] = '';
+    } elseif (cloudgate_is_rate_limited($ip)) {
         cloudgate_log_failure('contact');
         unset($_POST['action']);
         $_REQUEST['action'] = '';
@@ -191,23 +196,31 @@ if (
 ) {
     $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
     $path = strtolower((string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    if (strpos($path, '/admin/') === false && strpos($path, '\\admin\\') === false
-        && ($script === 'index.php' || $script === 'dologin.php')
-        && isset($_POST['username'], $_POST['password'])
-        && is_string($_POST['username']) && is_string($_POST['password'])
-        && $_POST['username'] !== '' && $_POST['password'] !== ''
-    ) {
+    $uri = strtolower((string)($_SERVER['REQUEST_URI'] ?? ''));
+    $isLogin = ($script === 'dologin.php')
+        || strpos($uri, '/login') !== false
+        || (isset($_POST['username']) && isset($_POST['password']));
+
+    if (strpos($path, '/admin/') === false && strpos($path, '\\admin\\') === false && $isLogin) {
         $ip = cloudgate_get_ip();
-        if (cloudgate_is_rate_limited($ip)) {
+        $loginUrl = 'index.php?rp=/login&error=captcha';
+
+        if (cloudgate_is_whitelisted($ip)) {
+        } elseif (cloudgate_is_blacklisted($ip)) {
             cloudgate_log_failure('login');
-            header('Location: login.php?error=captcha');
+            header('Location: ' . $loginUrl);
             exit;
-        }
-        $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
-        if ($token === '' || !cloudgate_verify($token)) {
+        } elseif (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('login');
-            header('Location: login.php?error=captcha');
+            header('Location: ' . $loginUrl);
             exit;
+        } else {
+            $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
+            if ($token === '' || !cloudgate_verify($token)) {
+                cloudgate_log_failure('login');
+                header('Location: ' . $loginUrl);
+                exit;
+            }
         }
     }
 }
@@ -226,16 +239,31 @@ if (
         && ($script === 'index.php' || $script === 'pwreset.php')
     ) {
         $ip = cloudgate_get_ip();
-        if (cloudgate_is_rate_limited($ip)) {
+        if (cloudgate_is_whitelisted($ip)) {
+        } elseif (cloudgate_is_blacklisted($ip)) {
             cloudgate_log_failure('pwreset');
-            header('Location: pwreset.php?error=captcha');
+            $pwUrl = ($script === 'pwreset.php')
+                ? 'pwreset.php?error=captcha'
+                : 'index.php?rp=/password/reset&error=captcha';
+            header('Location: ' . $pwUrl);
             exit;
-        }
-        $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
-        if ($token === '' || !cloudgate_verify($token)) {
+        } elseif (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('pwreset');
-            header('Location: pwreset.php?error=captcha');
+            $pwUrl = ($script === 'pwreset.php')
+                ? 'pwreset.php?error=captcha'
+                : 'index.php?rp=/password/reset&error=captcha';
+            header('Location: ' . $pwUrl);
             exit;
+        } else {
+            $token = isset($_POST['cf-turnstile-response']) ? trim((string) $_POST['cf-turnstile-response']) : '';
+            if ($token === '' || !cloudgate_verify($token)) {
+                cloudgate_log_failure('pwreset');
+                $pwUrl = ($script === 'pwreset.php')
+                    ? 'pwreset.php?error=captcha'
+                    : 'index.php?rp=/password/reset&error=captcha';
+                header('Location: ' . $pwUrl);
+                exit;
+            }
         }
     }
 }
@@ -246,6 +274,7 @@ if (
 add_hook('ClientAreaPageHooks', 1, function ($vars) {
     return [
         'display_turnstile' => function($params, $smarty) {
+            if (cloudgate_is_whitelisted()) return '';
             $siteKey = cloudgate_get_site_key();
             if (!$siteKey) return '';
             $theme = cloudgate_get_setting('theme') ?: 'auto';
@@ -260,6 +289,7 @@ add_hook('ClientAreaPageHooks', 1, function ($vars) {
  */
 add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     if (!cloudgate_get_site_key()) return;
+    if (cloudgate_is_whitelisted()) return;
     return '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>';
 });
 
@@ -269,6 +299,8 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
 add_hook('ClientAreaFooterOutput', 1, function ($vars) {
     $siteKey = cloudgate_get_site_key();
     if (!$siteKey) return;
+
+    if (cloudgate_is_whitelisted()) return;
 
     $templatefile = $vars['templatefile'];
     $filename = $vars['filename'];
@@ -370,11 +402,6 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
         }
     }
 
-    /*
-     * Password reset: do NOT rely on $templatefile (WHMCS 8–10 / child themes may use different names).
-     * If the condition never matched, $jsCode stayed empty and nothing ran — Turnstile never appeared.
-     * We detect the standard email step by hidden input name="action" value="reset" (WHMCS core forms).
-     */
     if (cloudgate_is_enabled('enable_pwreset')) {
         $widgetHtml = cloudgate_widget_html('pwreset');
         $customPw = cloudgate_get_setting('custom_pwreset_sel');
@@ -535,6 +562,11 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
 add_hook('UserLoginVerification', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_login')) {
         $ip = cloudgate_get_ip();
+        if (cloudgate_is_whitelisted($ip)) return;
+        if (cloudgate_is_blacklisted($ip)) {
+            cloudgate_log_failure('login');
+            return cloudgate_text('error');
+        }
         if (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('login');
             return cloudgate_text('error');
@@ -551,6 +583,11 @@ add_hook('UserLoginVerification', 1, function ($vars) {
 add_hook('ClientDetailsValidation', 1, function ($vars) {
     if (!isset($_SESSION['uid']) && cloudgate_is_enabled('enable_register')) {
         $ip = cloudgate_get_ip();
+        if (cloudgate_is_whitelisted($ip)) return;
+        if (cloudgate_is_blacklisted($ip)) {
+            cloudgate_log_failure('register');
+            return [cloudgate_text('error')];
+        }
         if (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('register');
             return [cloudgate_text('error')];
@@ -566,6 +603,11 @@ add_hook('ClientDetailsValidation', 1, function ($vars) {
 add_hook('ShoppingCartValidateCheckout', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_cart')) {
         $ip = cloudgate_get_ip();
+        if (cloudgate_is_whitelisted($ip)) return;
+        if (cloudgate_is_blacklisted($ip)) {
+            cloudgate_log_failure('cart');
+            return cloudgate_text('error');
+        }
         if (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('cart');
             return cloudgate_text('error');
@@ -581,6 +623,11 @@ add_hook('ShoppingCartValidateCheckout', 1, function ($vars) {
 add_hook('TicketOpenValidation', 1, function ($vars) {
     if (cloudgate_is_enabled('enable_ticket')) {
         $ip = cloudgate_get_ip();
+        if (cloudgate_is_whitelisted($ip)) return;
+        if (cloudgate_is_blacklisted($ip)) {
+            cloudgate_log_failure('ticket');
+            return cloudgate_text('error');
+        }
         if (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('ticket');
             return cloudgate_text('error');
@@ -598,6 +645,12 @@ add_hook('ClientAreaPageContact', 1, function ($vars) {
         if (!isset($_POST['action']) || $_POST['action'] !== 'send') return;
 
         $ip = cloudgate_get_ip();
+        if (cloudgate_is_whitelisted($ip)) return;
+        if (cloudgate_is_blacklisted($ip)) {
+            cloudgate_log_failure('contact');
+            header("Location: contact.php?error=captcha");
+            exit;
+        }
         if (cloudgate_is_rate_limited($ip)) {
             cloudgate_log_failure('contact');
             header("Location: contact.php?error=captcha");

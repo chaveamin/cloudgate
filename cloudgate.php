@@ -54,7 +54,8 @@ function cloudgate_output($vars)
         'enable_login', 'enable_register', 'enable_pwreset', 'enable_contact', 'enable_ticket', 'enable_cart',
         'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel',
         'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart',
-        'rate_limit_enabled', 'rate_limit_max', 'rate_limit_window'
+        'rate_limit_enabled', 'rate_limit_max', 'rate_limit_window',
+        'ip_whitelist', 'ip_blacklist'
     ];
 
     // Handle AJAX: test keys
@@ -150,7 +151,7 @@ function cloudgate_output($vars)
         label { font-size: 15px; display: block; font-weight: 600; margin-bottom: 8px; color: #3f3f46; }
         input[type="text"], input[type="password"], select { font-family: monospace; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
         input[type="text"]:focus, input[type="password"]:focus, select:focus { box-shadow: 0 0 0 2px #ff7737; outline: none; }
-        .help-block { color: #888; font-size: 0.85em; margin-top: 5px; }
+        .help-block { color: #888; font-size: 0.9em; margin-top: 5px; }
         .row { display: flex; align-items: flex-start; column-gap: 24px; }
         .row > * { width: 100%; }
         .col-half { flex: 0 0 50%; padding: 0 15px; box-sizing: border-box; }
@@ -253,7 +254,7 @@ function cloudgate_output($vars)
                 <div class="cloudgate-card">
                     <h3>تنظیمات نمایش ویجت</h3>
                     <div class="toggle-row">
-                        <span>نمایش در صفحه ورود</span>
+                        <span>صفحه ورود</span>
                         <select class="mode-select" name="mode_login">
                             <option value="managed" '  . ($settings['mode_login']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_login'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -265,7 +266,7 @@ function cloudgate_output($vars)
                         </label>
                     </div>
                         <div class="toggle-row">
-                        <span>نمایش در صفحه ثبت‌نام</span>
+                        <span>صفحه ثبت‌نام</span>
                         <select class="mode-select" name="mode_register">
                             <option value="managed" '  . ($settings['mode_register']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_register'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -277,7 +278,7 @@ function cloudgate_output($vars)
                         </label>
                     </div>
                         <div class="toggle-row">
-                        <span>نمایش در صفحه بازنشانی رمز عبور</span>
+                        <span>صفحه بازنشانی رمز عبور</span>
                         <select class="mode-select" name="mode_pwreset">
                             <option value="managed" '  . ($settings['mode_pwreset']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_pwreset'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -289,7 +290,7 @@ function cloudgate_output($vars)
                         </label>
                     </div>
                         <div class="toggle-row">
-                        <span>نمایش در صفحه ارتباط</span>
+                        <span>صفحه ارتباط</span>
                         <select class="mode-select" name="mode_contact">
                             <option value="managed" '  . ($settings['mode_contact']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_contact'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -301,7 +302,7 @@ function cloudgate_output($vars)
                         </label>
                     </div>
                         <div class="toggle-row">
-                        <span>نمایش در صفحه ارسال تیکت</span>
+                        <span>صفحه ارسال تیکت</span>
                         <select class="mode-select" name="mode_ticket">
                             <option value="managed" '  . ($settings['mode_ticket']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_ticket'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -313,7 +314,7 @@ function cloudgate_output($vars)
                         </label>
                     </div>
                         <div class="toggle-row">
-                        <span>نمایش در صفحه سبد خرید</span>
+                        <span>صفحه سبد خرید</span>
                         <select class="mode-select" name="mode_cart">
                             <option value="managed" '  . ($settings['mode_cart']  == 'managed'        ? 'selected' : '') . '>Managed</option>
                             <option value="non-interactive" ' . ($settings['mode_cart'] == 'non-interactive' ? 'selected' : '') . '>Non-interactive</option>
@@ -380,6 +381,22 @@ function cloudgate_output($vars)
                         <input type="text" name="rate_limit_window" value="' . htmlspecialchars($settings['rate_limit_window'] ?: '5') . '" placeholder="5">
                         <small>پنجره زمانی برای شمارش تلاش‌ها</small>
                     </div>
+                </div>
+            </div>
+
+            <div class="cloudgate-card">
+                <h3>لیست IP</h3>
+                <p class="help-block">آدرس‌های IP را با کاما جدا کنید. از CIDR برای محدوده‌ها استفاده کنید (مثال: 192.168.1.0/24)</p>
+
+                <div class="form-group">
+                    <label>لیست سفید</label>
+                    <input type="text" name="ip_whitelist" value="' . htmlspecialchars($settings['ip_whitelist'] ?? '') . '" placeholder="127.0.0.1, 10.0.0.0/8">
+                    <small>این آی پی بدون کپچا میتوانند به صفحه دسترسی داشته باشند</small>
+                </div>
+                <div class="form-group">
+                    <label>لیست سیاه (مسدود شده)</label>
+                    <input type="text" name="ip_blacklist" value="' . htmlspecialchars($settings['ip_blacklist'] ?? '') . '" placeholder="1.2.3.4, 5.6.7.0/24">
+                    <small>این آی پی ها کاملاً مسدود میشوند و امکان ارسال درخواست ندارند</small>
                 </div>
             </div>
 
