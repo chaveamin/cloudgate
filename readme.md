@@ -128,9 +128,11 @@ GET ?module=cloudgate&action=api&key=YOUR_KEY&type=ip_check&ip=1.2.3.4
 
 پاسخ: تعداد خطاها، وضعیت rate limit، whitelist و blacklist
 
-## استفاده دستی
+## استفاده دستی (Smarty)
 
-اگر ترجیح میدهید ویجت را به صورت دستی در فایل‌های قالب خود قرار دهید، میتوانید از متغییر Smarty استفاده کنید:
+ویجت را به صورت دستی در فایل‌های قالب خود قرار دهید.
+
+**ساده:**
 
 ```html
 <form method="post" action="login.php">
@@ -138,6 +140,56 @@ GET ?module=cloudgate&action=api&key=YOUR_KEY&type=ip_check&ip=1.2.3.4
   <button type="submit">Login</button>
 </form>
 ```
+
+**با پارامترها:**
+
+```smarty
+{* تشخیص خودکار صفحه از قالب *}
+{display_turnstile}
+
+{* انتخاب صفحه به صورت دستی *}
+{display_turnstile page="login"}
+
+{* سفارشی کردن کامل *}
+{display_turnstile page="login" theme="dark" size="compact" mode="invisible"}
+
+{* ذخیره در متغیر برای قرار دادن در جای دلخواه *}
+{display_turnstile assign="captchaHtml"}
+{$captchaHtml nofilter}
+```
+
+**پارامترها:**
+
+| پارامتر  | توضیح                                                        | مقدار پیش‌فرض        |
+| -------- | ------------------------------------------------------------ | -------------------- |
+| `page`   | نوع صفحه (login/register/pwreset/contact/ticket/cart/domain) | تشخیص خودکار از قالب |
+| `theme`  | تم ویجت (auto/light/dark)                                    | از تنظیمات           |
+| `mode`   | حالت نمایش (managed/non-interactive/invisible)               | از تنظیمات صفحه      |
+| `size`   | اندازه ویجت (normal/compact)                                 | از تنظیمات           |
+| `assign` | نام متغیر برای ذخیره خروجی به جای نمایش مستقیم               | —                    |
+
+**پشتیبانی از صفحات:**
+
+| صفحه                               | صفحه تشخیص داده شده |
+| ---------------------------------- | ------------------- |
+| `login`                            | login               |
+| `clientregister`                   | register            |
+| `password-reset` / `pwreset`       | pwreset             |
+| `contact`                          | contact             |
+| `supportticketsubmit-*`            | ticket              |
+| `domainchecker` / `domainregister` | domain              |
+| صفحات checkout / cart              | cart                |
+
+### ویژگی‌های متغییر
+
+- تشخیص خودکار صفحه از نام صفحه
+- تنظیم `data-appearance` و `data-execution` بر اساس حالت (invisible/managed)
+- نمایش پیام خطا هنگام `?error=captcha` در URL
+- پشتیبانی از callback برای پر کردن خودکار توکن
+- ذخیره در متغیر با `{display_turnstile assign="varName"}`
+- در حالت non-interactive به صورت خودکار از compact استفاده میکند
+
+---
 
 طراحی و توسعه: [achave](https://achave.ir/)\
 این پروژه متن‌باز است و تحت لایسنس [MIT](LICENSE) در دسترس قرار دارد.\

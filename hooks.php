@@ -300,15 +300,109 @@ if (
 
 /**
  * Register Smarty Function {display_turnstile}
+ *
+ * Usage:
+ *   {display_turnstile}
+ *   {display_turnstile page="login"}
+ *   {display_turnstile page="login" theme="dark" size="compact"}
+ *   {display_turnstile assign="captchaHtml"}
+ *
+ * Available parameters:
+ *   page   — override page detection (login|register|pwreset|contact|ticket|cart|domain)
+ *   theme  — override theme (auto|light|dark)
+ *   size   — override size (normal|compact)
+ *   mode   — override mode (managed|non-interactive|invisible)
+ *   assign — assign HTML to a variable instead of outputting
  */
 add_hook('ClientAreaPageHooks', 1, function ($vars) {
     return [
         'display_turnstile' => function($params, $smarty) {
             if (cloudgate_is_whitelisted()) return '';
+
             $siteKey = cloudgate_get_site_key();
             if (!$siteKey) return '';
-            $theme = cloudgate_get_setting('theme') ?: 'auto';
-            return '<div class="cf-turnstile" data-sitekey="' . $siteKey . '" data-theme="' . $theme . '"></div>';
+
+            // Determine page context
+            $page = $params['page'] ?? null;
+            if (!$page) {
+                $templatefile = $vars['templatefile'] ?? '';
+                $filename = $vars['filename'] ?? '';
+                $pageMap = [
+                    'login' => 'login',
+                    'clientregister' => 'register',
+                    'password-reset' => 'pwreset',
+                    'pwreset' => 'pwreset',
+                    'contact' => 'contact',
+                    'supportticketsubmit-stepone' => 'ticket',
+                    'supportticketsubmit-steptwo' => 'ticket',
+                    'domainchecker' => 'domain',
+                    'domainregister' => 'domain',
+                ];
+                $page = $pageMap[$templatefile] ?? null;
+                if (!$page) {
+                    if (strpos($templatefile, 'checkout') !== false || $filename === 'cart') {
+                        $page = 'cart';
+                    } else {
+                        $page = 'generic';
+                    }
+                }
+            }
+
+            // Get mode for this page (unless explicitly overridden)
+            $mode = $params['mode'] ?? null;
+            if (!$mode && $page !== 'generic') {
+                $mode = cloudgate_get_setting('mode_' . $page) ?: 'managed';
+            }
+            $mode = $mode ?: 'managed';
+
+            // Check if page protection is enabled (skip render if disabled, unless page is generic/custom)
+            if ($page !== 'generic' && !cloudgate_is_enabled('enable_' . $page)) {
+                return '';
+            }
+
+            // Theme and size overrides
+            $theme = $params['theme'] ?? cloudgate_get_setting('theme') ?: 'auto';
+            $size = $params['size'] ?? null;
+            if (!$size) {
+                $size = ($mode === 'non-interactive') ? 'compact' : (cloudgate_get_setting('size') ?: 'normal');
+            }
+
+            // Build data attributes based on mode
+            $appearance = ($mode === 'invisible') ? 'hidden' : 'always';
+            $execution = ($mode === 'invisible') ? 'execute' : 'render';
+            $wrapStyle = ($mode === 'invisible') ? 'display:none;' : '';
+
+            // Check for error state
+            $hasError = isset($_GET['error']) && $_GET['error'] === 'captcha';
+            $errorMsg = '';
+            if ($hasError) {
+                $errorMsg = cloudgate_text('error');
+            }
+
+            // Build widget HTML
+            $html = '<div class="cf-turnstile-wrap" style="' . $wrapStyle . '">';
+            $html .= '<div class="cf-turnstile" '
+                . 'data-sitekey="' . htmlspecialchars($siteKey) . '" '
+                . 'data-theme="' . htmlspecialchars($theme) . '" '
+                . 'data-appearance="' . $appearance . '" '
+                . 'data-execution="' . $execution . '" '
+                . 'data-size="' . $size . '" '
+                . 'data-callback="cloudgateTurnstileCallback"'
+                . '></div>';
+
+            if ($errorMsg) {
+                $html .= '<div class="alert alert-danger" style="margin-top:10px;">' . htmlspecialchars($errorMsg) . '</div>';
+            }
+
+            $html .= '</div>';
+
+            // Assign to variable or return
+            if (isset($params['assign'])) {
+                $smarty->assign($params['assign'], $html);
+                return '';
+            }
+
+            return $html;
         }
     ];
 });
@@ -320,7 +414,8 @@ add_hook('ClientAreaPageHooks', 1, function ($vars) {
 add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     if (!cloudgate_get_site_key()) return;
     if (cloudgate_is_whitelisted()) return;
-    return '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>';
+    return '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
+        . '<script>function cloudgateTurnstileCallback(token){var el=document.querySelector("[name=cf-turnstile-response]");if(!el){var f=document.createElement("input");f.type="hidden";f.name="cf-turnstile-response";f.value=token;document.querySelectorAll("form").forEach(function(form){form.appendChild(f.cloneNode(true))});}else{el.value=token;}}</script>';
 });
 
 /**
