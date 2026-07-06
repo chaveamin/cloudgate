@@ -142,6 +142,72 @@ function cloudgate_output($vars)
     $nonce = bin2hex(random_bytes(16));
     $_SESSION['cloudgate_test_nonce'] = $nonce;
 
+    // Handle clear logs
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'clear_logs') {
+        Capsule::table('mod_cloudgate_logs')->truncate();
+        echo '<div class="alert">لاگ‌ها با موفقیت پاک شدند</div>';
+    }
+
+    // Handle CSV export
+    if (isset($_GET['action']) && $_GET['action'] === 'export_csv') {
+        $exportPage = $_GET['log_filter_page'] ?? '';
+        $exportIp = $_GET['log_filter_ip'] ?? '';
+
+        $exportQuery = Capsule::table('mod_cloudgate_logs');
+        if ($exportPage !== '' && in_array($exportPage, ['login', 'register', 'pwreset', 'contact', 'ticket', 'cart'], true)) {
+            $exportQuery->where('page', $exportPage);
+        }
+        if ($exportIp !== '') {
+            $exportQuery->where('ip', 'like', '%' . $exportIp . '%');
+        }
+        $exportEntries = $exportQuery->orderByDesc('created_at')->get();
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="cloudgate_logs_' . date('Y-m-d_H-i') . '.csv"');
+
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBF) . chr(0xBD));
+        fputcsv($output, ['صفحه', 'آدرس آی پی', 'User Agent', 'تاریخ']);
+
+        $pageLabels = [
+            'login' => 'Login', 'register' => 'Register', 'pwreset' => 'Password Reset',
+            'contact' => 'Contact', 'ticket' => 'Ticket', 'cart' => 'Cart',
+        ];
+
+        foreach ($exportEntries as $entry) {
+            fputcsv($output, [
+                $pageLabels[$entry->page] ?? $entry->page,
+                $entry->ip,
+                $entry->user_agent ?? '',
+                date('Y-m-d H:i:s', strtotime($entry->created_at)),
+            ]);
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    // Log viewer query
+    $logPage = max(1, (int)($_GET['log_page'] ?? 1));
+    $logPerPage = 20;
+    $logOffset = ($logPage - 1) * $logPerPage;
+    $logFilterPage = $_GET['log_filter_page'] ?? '';
+    $logFilterIp = $_GET['log_filter_ip'] ?? '';
+
+    $logQuery = Capsule::table('mod_cloudgate_logs');
+    if ($logFilterPage !== '' && in_array($logFilterPage, ['login', 'register', 'pwreset', 'contact', 'ticket', 'cart'], true)) {
+        $logQuery->where('page', $logFilterPage);
+    }
+    if ($logFilterIp !== '') {
+        $logQuery->where('ip', 'like', '%' . $logFilterIp . '%');
+    }
+    $logTotal = (int) $logQuery->count();
+    $logTotalPages = max(1, (int)ceil($logTotal / $logPerPage));
+    $logEntries = $logQuery->orderByDesc('created_at')->skip($logOffset)->take($logPerPage)->get();
+
+    // Log tab active state
+    $activeTab = ($_GET['tab'] ?? '') === 'logs' ? 'logs' : 'settings';
+
     // Render Form
     echo '<style>
         @font-face { font-family: "bakh"; src: url(' . $assetsdir . 'YekanBakh.woff2' . '); font-weight: 100 900; font-display: fallback; }
@@ -186,6 +252,36 @@ function cloudgate_output($vars)
         .test-emphasis { margin-top: 8px; font-size: 12px; color: oklch(70.5% 0.015 286.067); }
         .mode-select { margin: 0 auto 0 48px; width:auto; padding:6px 10px; }
         @media screen and (max-width: 750px) { .row { flex-direction: column; } .btn-save { width: 100%; } .actions-row { flex-direction: column; row-gap: 16px; } }
+        .cg-tabs { transform: translateX(-22px); display: flex; gap: 0; margin-bottom: 12px; }
+        .cg-tab { padding: 12px 24px; background: #fff; border: none; border-radius: 12px; cursor: pointer; font-size: 16px; font-weight: 600; font-family: "bakh"; transition: background 0.2s; }
+        .cg-tab.active { background: color-mix(in srgb, #f97316 15%, #fff);; color: #c2410c; border: none; }
+        .cg-tab-content { display: none; }
+        .cg-tab-content.active { display: block; }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .log-table th { background: #f4f4f5; padding: 12px; text-align: right; font-weight: 600; border-bottom: 2px solid #e4e4e7; }
+        .log-table td { padding: 10px 12px; border-bottom: 1px solid oklch(0.2103 0.0059 285.89 / 5%); }
+        .log-table tr:hover { background: oklch(0.2103 0.0059 285.89 / 3%); }
+        .log-page-badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .log-page-login { background: oklch(70% 0.15 250 / 15%); color: oklch(50% 0.12 250); }
+        .log-page-register { background: oklch(80% 0.15 150 / 15%); color: oklch(45% 0.12 150); }
+        .log-page-pwreset { background: oklch(80% 0.12 80 / 15%); color: oklch(50% 0.1 80); }
+        .log-page-contact { background: oklch(80% 0.15 300 / 15%); color: oklch(50% 0.12 300); }
+        .log-page-ticket { background: oklch(80% 0.12 30 / 15%); color: oklch(50% 0.1 30); }
+        .log-page-cart { background: oklch(80% 0.15 60 / 15%); color: oklch(50% 0.12 60); }
+        .log-filters { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+        .log-filters select, .log-filters input { width: fit-content; margin: 0; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: monospace; }
+        .log-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+        .log-pagination a, .log-pagination span { padding: 6px 14px; border-radius: 8px; font-size: 14px; text-decoration: none; }
+        .log-pagination a { background: #f4f4f5; color: #3f3f46; }
+        .log-pagination a:hover { background: #e4e4e7; }
+        .log-pagination .current { background: #ff5e1f; color: #fff; font-weight: 600; }
+        .log-empty { text-align: center; padding: 40px; color: #71717a; font-size: 16px; }
+        .log-count { background: #f4f4f5; padding: 6px 14px; border-radius: 8px; font-size: 14px; color: #71717a; }
+        .btn-clear-log { background: oklch(63.7% 0.237 25.331 / 15%); color: oklch(50.5% 0.213 27.518); padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: "bakh"; }
+        .btn-clear-log:hover { background: oklch(63.7% 0.237 25.331 / 25%); }
+        .log-table__wrapper { overflow: scroll; }
+
+        @media screen and (max-width: 650px) { .log-filters { flex-direction: column; } .log-filters input, .log-filters button,.log-filters select { width: 100%; } }
     </style>';
 
     echo
@@ -210,6 +306,13 @@ function cloudgate_output($vars)
                 <small>نسخه ' . $vars['version'] . '</small>
             </div>
         </header>
+
+        <div class="cg-tabs">
+            <button type="button" class="cg-tab ' . ($activeTab === 'settings' ? 'active' : '') . '" onclick="document.getElementById(\'tab-settings\').style.display=\'block\';document.getElementById(\'tab-logs\').style.display=\'none\';document.querySelectorAll(\'.cg-tab\').forEach(function(t){t.classList.remove(\'active\')});this.classList.add(\'active\');">تنظیمات</button>
+            <button type="button" class="cg-tab ' . ($activeTab === 'logs' ? 'active' : '') . '" onclick="document.getElementById(\'tab-settings\').style.display=\'none\';document.getElementById(\'tab-logs\').style.display=\'block\';document.querySelectorAll(\'.cg-tab\').forEach(function(t){t.classList.remove(\'active\')});this.classList.add(\'active\');">لاگ خطاها (' . $logTotal . ')</button>
+        </div>
+
+        <div id="tab-settings" class="cg-tab-content ' . ($activeTab === 'settings' ? 'active' : '') . '" style="display:' . ($activeTab === 'settings' ? 'block' : 'none') . ';">
         <form method="post" action="">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="cloudgate_nonce" value="' . $nonce . '">
@@ -434,5 +537,105 @@ function cloudgate_output($vars)
                 }
             </script>
         </form>
+        </div>
+
+        <div id="tab-logs" class="cg-tab-content ' . ($activeTab === 'logs' ? 'active' : '') . '" style="display:' . ($activeTab === 'logs' ? 'block' : 'none') . ';">
+            <div class="cloudgate-card">
+                <h3>لاگ تلاش‌های ناموفق</h3>
+
+                <form method="get" action="" style="margin-bottom:0;">
+                    <input type="hidden" name="module" value="cloudgate">
+                    <input type="hidden" name="tab" value="logs">
+                    <div class="log-filters">
+                        <select name="log_filter_page">
+                            <option value="">همه صفحات</option>
+                            <option value="login"' . ($logFilterPage === 'login' ? ' selected' : '') . '>ورود</option>
+                            <option value="register"' . ($logFilterPage === 'register' ? ' selected' : '') . '>ثبت‌نام</option>
+                            <option value="pwreset"' . ($logFilterPage === 'pwreset' ? ' selected' : '') . '>بازنشانی رمز</option>
+                            <option value="contact"' . ($logFilterPage === 'contact' ? ' selected' : '') . '>ارتباط</option>
+                            <option value="ticket"' . ($logFilterPage === 'ticket' ? ' selected' : '') . '>تیکت</option>
+                            <option value="cart"' . ($logFilterPage === 'cart' ? ' selected' : '') . '>سبد خرید</option>
+                        </select>
+                        <input type="text" name="log_filter_ip" value="' . htmlspecialchars($logFilterIp) . '" placeholder="جستجوی IP...">
+                        <button type="submit" style="padding:8px 18px;background:#ff5e1f;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:bakh;">فیلتر</button>
+                        <div style="margin-right:auto;"></div>';
+
+    $exportParams = 'module=cloudgate&action=export_csv';
+    if ($logFilterPage !== '') $exportParams .= '&log_filter_page=' . urlencode($logFilterPage);
+    if ($logFilterIp !== '') $exportParams .= '&log_filter_ip=' . urlencode($logFilterIp);
+
+    echo '                       <a href="?' . $exportParams . '" style="padding:8px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:bakh;text-decoration:none;font-size:14px;font-weight:600;">خروجی CSV</a>
+                        <button type="button" class="btn-clear-log" onclick="if(confirm(\'آیا مطمئنید تمام لاگ‌ها پاک شوند؟\')){document.getElementById(\'clear-log-form\').submit();}">پاک کردن لاگ‌ها</button>
+                    </div>
+                </form>
+                <form id="clear-log-form" method="post" action="" style="display:none;">
+                    <input type="hidden" name="action" value="clear_logs">
+                </form>
+                <form id="clear-log-form" method="post" action="" style="display:none;">
+                    <input type="hidden" name="action" value="clear_logs">
+                </form>';
+
+    if ($logEntries->isEmpty()) {
+        echo '<div class="log-empty">هیچ رکوردی یافت نشد</div>';
+    } else {
+        echo '<table class="log-table">
+                <thead>
+                    <tr>
+                        <th>صفحه</th>
+                        <th>آدرس IP</th>
+                        <th>User Agent</th>
+                        <th>تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>';
+
+        $pageLabels = [
+            'login' => ['ورود', 'login'],
+            'register' => ['ثبت‌نام', 'register'],
+            'pwreset' => ['بازنشانی رمز', 'pwreset'],
+            'contact' => ['ارتباط', 'contact'],
+            'ticket' => ['تیکت', 'ticket'],
+            'cart' => ['سبد خرید', 'cart'],
+        ];
+
+        foreach ($logEntries as $entry) {
+            $pageLabel = $pageLabels[$entry->page] ?? [$entry->page, 'login'];
+            $pageClass = 'log-page-' . $pageLabel[1];
+            $ua = htmlspecialchars($entry->user_agent ?: '—');
+            $date = date('Y-m-d H:i', strtotime($entry->created_at));
+            echo '<tr>
+                    <td><span class="log-page-badge ' . $pageClass . '">' . $pageLabel[0] . '</span></td>
+                    <td style="font-family:monospace;">' . htmlspecialchars($entry->ip) . '</td>
+                    <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' . $ua . '">' . $ua . '</td>
+                    <td style="white-space:nowrap;">' . $date . '</td>
+                </tr>';
+        }
+
+        echo '</tbody></table>';
+
+        if ($logTotalPages > 1) {
+            $baseParams = 'module=cloudgate&tab=logs';
+            if ($logFilterPage !== '') $baseParams .= '&log_filter_page=' . urlencode($logFilterPage);
+            if ($logFilterIp !== '') $baseParams .= '&log_filter_ip=' . urlencode($logFilterIp);
+
+            echo '<div class="log-pagination">';
+            if ($logPage > 1) {
+                echo '<a href="?' . $baseParams . '&log_page=' . ($logPage - 1) . '">&#8594; قبلی</a>';
+            } else {
+                echo '<span></span>';
+            }
+            echo '<span>صفحه ' . $logPage . ' از ' . $logTotalPages . '</span>';
+            if ($logPage < $logTotalPages) {
+                echo '<a href="?' . $baseParams . '&log_page=' . ($logPage + 1) . '">بعدی &#8592;</a>';
+            } else {
+                echo '<span></span>';
+            }
+            echo '</div>';
+        }
+    }
+
+    echo '
+            </div>
+        </div>
     </div>';
 }
