@@ -119,14 +119,10 @@ function cloudgate_load_lang_array_from_path($path)
         return [];
     }
     $_LANG = [];
-    /** @noinspection PhpIncludeInspection */
     include $path;
     return isset($_LANG) && is_array($_LANG) ? $_LANG : [];
 }
 
-/**
- * Active WHMCS language pack ($GLOBALS['_LANG']) when available; otherwise lang/*.php from session + english.
- */
 function cloudgate_client_lang_array()
 {
     if (!empty($GLOBALS['_LANG']) && is_array($GLOBALS['_LANG'])) {
@@ -168,11 +164,6 @@ function cloudgate_js_string($key)
     return json_encode(cloudgate_text($key), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 }
 
-/**
- * Early interception for pages without dedicated validation hooks.
- * hooks.php is loaded during init.php, BEFORE contact.php processes the form,
- * so this check can block spam before the email is sent.
- */
 if (
     php_sapi_name() !== 'cli'
     && basename($_SERVER['SCRIPT_NAME'] ?? '') === 'contact.php'
@@ -192,10 +183,6 @@ if (
     }
 }
 
-/**
- * Early interception: WHMCS 8+ posts client login to index.php (routed URL), not dologin.php.
- * UserLoginVerification is not documented and is not invoked on current WHMCS builds, so login was effectively unchecked.
- */
 if (
     php_sapi_name() !== 'cli'
     && (!defined('ADMINAREA') || !ADMINAREA)
@@ -225,10 +212,6 @@ if (
     }
 }
 
-/**
- * Early interception: password reset email step posts to index.php (routed). ClientAreaPagePasswordReset is for template data,
- * not a reliable pre-submit gate on all WHMCS versions.
- */
 if (
     php_sapi_name() !== 'cli'
     && (!defined('ADMINAREA') || !ADMINAREA)

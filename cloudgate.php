@@ -61,6 +61,16 @@ function cloudgate_output($vars)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_keys') {
         header('Content-Type: application/json');
 
+        // Validate nonce
+        $submittedNonce = $_POST['cloudgate_nonce'] ?? '';
+        $validNonce = $_SESSION['cloudgate_test_nonce'] ?? '';
+        unset($_SESSION['cloudgate_test_nonce']);
+
+        if (!$validNonce || !hash_equals($validNonce, $submittedNonce)) {
+            echo json_encode(['ok' => false, 'message' => 'درخواست نامعتبر است. صفحه را رفرش کنید.']);
+            exit;
+        }
+
         $secret = isset($_POST['secret_key']) ? trim($_POST['secret_key']) : cloudgate_get_setting('secret_key');
 
         if (!$secret) {
@@ -126,6 +136,10 @@ function cloudgate_output($vars)
 
     $systemUrl = Setting::getValue('SystemURL');
     $assetsdir = $systemUrl . '/modules/addons/cloudgate/assets/';
+
+    // Generate nonce for AJAX protection
+    $nonce = bin2hex(random_bytes(16));
+    $_SESSION['cloudgate_test_nonce'] = $nonce;
 
     // Render Form
     echo '<style>
@@ -197,6 +211,7 @@ function cloudgate_output($vars)
         </header>
         <form method="post" action="">
             <input type="hidden" name="action" value="save">
+            <input type="hidden" name="cloudgate_nonce" value="' . $nonce . '">
             
             <div class="cloudgate-card">
                 <h3>پیکربندی API</h3>
@@ -352,7 +367,7 @@ function cloudgate_output($vars)
                         <span class="slider"></span>
                     </label>
                 </div>
-                <p class="help-block">جلوگیری از اتک‌ها با محدود کردن تعداد تلاش‌های ناموفق از یک آدرس آی پی</p>
+                <p class="help-block">جلوگیری از اتک‌ با محدود کردن تعداد تلاش‌های ناموفق از یک آی پی</p>
 
                 <div class="row">
                     <div class="form-group">
@@ -377,6 +392,7 @@ function cloudgate_output($vars)
                     var btn = document.getElementById("cloudgate-test-btn");
                     var box = document.getElementById("cloudgate-test-result");
                     var secret = document.querySelector("[name=secret_key]").value.trim();
+                    var nonce = document.querySelector("[name=cloudgate_nonce]").value;
 
                     btn.disabled = true;
                     box.className = "tg-loading";
@@ -386,7 +402,7 @@ function cloudgate_output($vars)
                     fetch(window.location.href, {
                         method: "POST",
                         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: "action=test_keys&secret_key=" + encodeURIComponent(secret)
+                        body: "action=test_keys&secret_key=" + encodeURIComponent(secret) + "&cloudgate_nonce=" + encodeURIComponent(nonce)
                     })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
