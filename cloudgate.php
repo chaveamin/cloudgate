@@ -654,8 +654,8 @@ function cloudgate_output($vars)
                     <small>این کلید برای احراز هویت درخواست‌های API استفاده میشود</small>
                 </div>
 
-                <div style="background:#f4f4f5;padding:16px;border-radius:10px;font-size:13px;font-family:monospace;line-height:2;">
-                    <div style="font-weight:600;font-size:14px;margin-bottom:8px;font-family:bakh;">نمونه درخواست‌ها:</div>
+                <label>نمونه درخواست‌ها:</label>
+                <div dir="ltr" style="background:#f4f4f5;padding:16px;border-radius:10px;font-size:13px;font-family:monospace;line-height:2;">
                     <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=status</div>
                     <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=logs&page=login&limit=10</div>
                     <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=ip_check&ip=1.2.3.4</div>

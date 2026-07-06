@@ -184,7 +184,7 @@ GET ?module=cloudgate&action=api&key=YOUR_KEY&type=ip_check&ip=1.2.3.4
 
 - تشخیص خودکار صفحه از نام صفحه
 - تنظیم `data-appearance` و `data-execution` بر اساس حالت (invisible/managed)
-- نمایش پیام خطا هنگام `?error=captcha` در URL
+- نمایش پیام خطا هنگام `?error=captcha` در آدرس
 - پشتیبانی از callback برای پر کردن خودکار توکن
 - ذخیره در متغیر با `{display_turnstile assign="varName"}`
 - در حالت non-interactive به صورت خودکار از compact استفاده میکند
