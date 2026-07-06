@@ -1,4 +1,4 @@
-# ماژول صائزس مدیریت کپچای کلودفلر(turnstile)
+# ماژول WHMCS مدیریت کپچای کلودفلر(turnstile)
 
 ماژول WHMCS رایگان و متن‌باز که جایگزین کپچای گوگل با [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) میشود. یک جایگزین کاربر محور.
 
