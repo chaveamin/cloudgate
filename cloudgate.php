@@ -55,8 +55,130 @@ function cloudgate_output($vars)
         'custom_login_sel', 'custom_register_sel', 'custom_pwreset_sel', 'custom_contact_sel', 'custom_ticket_sel', 'custom_cart_sel', 'custom_domain_sel',
         'mode_login', 'mode_register', 'mode_pwreset', 'mode_contact', 'mode_ticket', 'mode_cart', 'mode_domain',
         'rate_limit_enabled', 'rate_limit_max', 'rate_limit_window',
-        'ip_whitelist', 'ip_blacklist'
+        'ip_whitelist', 'ip_blacklist',
+        'api_key'
     ];
+
+    // Handle REST API
+    if (isset($_GET['module']) && $_GET['module'] === 'cloudgate' && isset($_GET['action']) && $_GET['action'] === 'api') {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $apiKey = $_GET['key'] ?? $_POST['key'] ?? '';
+        $storedKey = cloudgate_get_setting('api_key');
+
+        if (!$storedKey || $apiKey !== $storedKey) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Invalid API key']);
+            exit;
+        }
+
+        $type = $_GET['type'] ?? $_POST['type'] ?? '';
+
+        switch ($type) {
+            case 'status':
+                $totalFailures = (int) Capsule::table('mod_cloudgate_logs')->count();
+                $recentFailures = (int) Capsule::table('mod_cloudgate_logs')
+                    ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-24 hours')))
+                    ->count();
+                $topIPs = Capsule::table('mod_cloudgate_logs')
+                    ->select('ip', Capsule::raw('COUNT(*) as attempts'))
+                    ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-24 hours')))
+                    ->groupBy('ip')
+                    ->orderByDesc('attempts')
+                    ->take(10)
+                    ->get()
+                    ->pluck('attempts', 'ip')
+                    ->toArray();
+                $pages = Capsule::table('mod_cloudgate_logs')
+                    ->select('page', Capsule::raw('COUNT(*) as attempts'))
+                    ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-24 hours')))
+                    ->groupBy('page')
+                    ->orderByDesc('attempts')
+                    ->get()
+                    ->pluck('attempts', 'page')
+                    ->toArray();
+
+                echo json_encode([
+                    'status' => 'ok',
+                    'total_failures' => $totalFailures,
+                    'failures_24h' => $recentFailures,
+                    'top_ips_24h' => $topIPs,
+                    'by_page_24h' => $pages,
+                    'rate_limit_enabled' => cloudgate_get_setting('rate_limit_enabled') === 'on',
+                    'rate_limit_max' => (int)(cloudgate_get_setting('rate_limit_max') ?: 5),
+                    'rate_limit_window' => (int)(cloudgate_get_setting('rate_limit_window') ?: 5),
+                ]);
+                break;
+
+            case 'logs':
+                $page = $_GET['page'] ?? '';
+                $ip = $_GET['ip'] ?? '';
+                $limit = min(100, max(1, (int)($_GET['limit'] ?? 20)));
+                $offset = max(0, (int)($_GET['offset'] ?? 0));
+
+                $query = Capsule::table('mod_cloudgate_logs');
+                if ($page !== '' && in_array($page, ['login', 'register', 'pwreset', 'contact', 'ticket', 'cart', 'domain'], true)) {
+                    $query->where('page', $page);
+                }
+                if ($ip !== '') {
+                    $query->where('ip', $ip);
+                }
+                $total = $query->count();
+                $entries = $query->orderByDesc('created_at')->skip($offset)->take($limit)->get();
+
+                echo json_encode([
+                    'status' => 'ok',
+                    'total' => $total,
+                    'offset' => $offset,
+                    'limit' => $limit,
+                    'entries' => $entries->toArray(),
+                ]);
+                break;
+
+            case 'ip_check':
+                $checkIp = $_GET['ip'] ?? '';
+                if ($checkIp === '') {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Missing ip parameter']);
+                    exit;
+                }
+                $failures = (int) Capsule::table('mod_cloudgate_logs')
+                    ->where('ip', $checkIp)
+                    ->count();
+                $recentFailures = (int) Capsule::table('mod_cloudgate_logs')
+                    ->where('ip', $checkIp)
+                    ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-24 hours')))
+                    ->count();
+                $windowMinutes = (int)(cloudgate_get_setting('rate_limit_window') ?: 5);
+                $recentWindow = (int) Capsule::table('mod_cloudgate_logs')
+                    ->where('ip', $checkIp)
+                    ->where('created_at', '>=', date('Y-m-d H:i:s', strtotime("-{$windowMinutes} minutes")))
+                    ->count();
+                $maxAttempts = (int)(cloudgate_get_setting('rate_limit_max') ?: 5);
+
+                echo json_encode([
+                    'status' => 'ok',
+                    'ip' => $checkIp,
+                    'total_failures' => $failures,
+                    'failures_24h' => $recentFailures,
+                    'failures_in_window' => $recentWindow,
+                    'rate_limit_max' => $maxAttempts,
+                    'rate_limit_window' => $windowMinutes,
+                    'would_be_rate_limited' => $recentWindow >= $maxAttempts && cloudgate_get_setting('rate_limit_enabled') === 'on',
+                    'is_whitelisted' => cloudgate_is_whitelisted($checkIp),
+                    'is_blacklisted' => cloudgate_is_blacklisted($checkIp),
+                ]);
+                break;
+
+            default:
+                http_response_code(400);
+                echo json_encode([
+                    'error' => 'Invalid type',
+                    'available_types' => ['status', 'logs', 'ip_check'],
+                ]);
+        }
+        exit;
+    }
 
     // Handle AJAX: test keys
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_keys') {
@@ -516,6 +638,27 @@ function cloudgate_output($vars)
                     <label>لیست سیاه (مسدود شده)</label>
                     <input type="text" name="ip_blacklist" value="' . htmlspecialchars($settings['ip_blacklist'] ?? '') . '" placeholder="1.2.3.4, 5.6.7.0/24">
                     <small>این آی پی ها کاملاً مسدود میشوند و امکان ارسال درخواست ندارند</small>
+                </div>
+            </div>
+
+            <div class="cloudgate-card">
+                <h3>REST API</h3>
+                <p class="help-block">برای استفاده از API، کلید را کپی کرده و در درخواست‌های خود ارسال کنید</p>
+
+                <div class="form-group">
+                    <label>API Key</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="text" name="api_key" id="api-key-input" value="' . htmlspecialchars($settings['api_key'] ?? '') . '" placeholder="برای ساخت کلیک کنید" readonly style="flex:1;font-family:monospace;background:#f4f4f5;">
+                        <button type="button" onclick="document.getElementById(\'api-key-input\').value=\'cg_\'+Array.from(crypto.getRandomValues(new Uint8Array(24))).map(function(b){return b.toString(16).padStart(2,\'0\')}).join(\'\');" style="padding:8px 16px;background:#ff5e1f;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:bakh;">ساخت کلید</button>
+                    </div>
+                    <small>این کلید برای احراز هویت درخواست‌های API استفاده میشود</small>
+                </div>
+
+                <div style="background:#f4f4f5;padding:16px;border-radius:10px;font-size:13px;font-family:monospace;line-height:2;">
+                    <div style="font-weight:600;font-size:14px;margin-bottom:8px;font-family:bakh;">نمونه درخواست‌ها:</div>
+                    <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=status</div>
+                    <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=logs&page=login&limit=10</div>
+                    <div>GET ?module=cloudgate&action=api&key=<span style="color:#ff5e1f;">YOUR_KEY</span>&type=ip_check&ip=1.2.3.4</div>
                 </div>
             </div>
 

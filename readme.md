@@ -100,7 +100,35 @@
 
 _توجه: این ماژول به طور خودکار سعی میکند عناصر کد امنیتی قدیمی را از طریق CSS پنهان کند، اما غیرفعال کردن آنها در تنظیمات توصیه میشود._
 
-## استفاده دستی برای توسعه‌دهندگان
+## REST API
+
+یک کلید API در بخش تنظیمات بسازید و از آن برای بررسی وضعیت سیستم استفاده کنید.
+
+**وضعیت کلی:**
+
+```
+GET ?module=cloudgate&action=api&key=YOUR_KEY&type=status
+```
+
+پاسخ: تعداد کل خطاها، خطاهای 24 ساعت اخیر، برترین آی پی ها و صفحات
+
+**لاگ‌ها:**
+
+```
+GET ?module=cloudgate&action=api&key=YOUR_KEY&type=logs&page=login&limit=10
+```
+
+پارامترها: `page` (login/register/pwreset/contact/ticket/cart/domain)، `ip`، `limit`، `offset`
+
+**بررسی IP:**
+
+```
+GET ?module=cloudgate&action=api&key=YOUR_KEY&type=ip_check&ip=1.2.3.4
+```
+
+پاسخ: تعداد خطاها، وضعیت rate limit، whitelist و blacklist
+
+## استفاده دستی
 
 اگر ترجیح میدهید ویجت را به صورت دستی در فایل‌های قالب خود قرار دهید، میتوانید از متغییر Smarty استفاده کنید:
 
