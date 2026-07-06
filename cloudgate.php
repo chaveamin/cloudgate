@@ -358,7 +358,7 @@ function cloudgate_output($vars)
                     <div class="form-group">
                         <label>حداکثر تلاش ناموفق</label>
                         <input type="text" name="rate_limit_max" value="' . htmlspecialchars($settings['rate_limit_max'] ?: '5') . '" placeholder="5">
-                        <small>تعداد تلاش‌های ناموفق مجاز در بازه زمانی</small>
+                        <small>تعداد تلاش‌های ناموفق مجاز</small>
                     </div>
                     <div class="form-group">
                         <label>بازه زمانی (دقیقه)</label>

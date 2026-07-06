@@ -471,11 +471,6 @@ add_hook('ClientAreaFooterOutput', 1, function ($vars) {
             }';
     }
 
-    /*
-     * Checkout "Existing Customer Login" uses AJAX (POST .../login/cart) — not the login.tpl form.
-     * Early login interception still requires cf-turnstile-response whenever enable_login is on.
-     * Without this, WHMCS redirects to login.php?error=captcha and jqClient sees parsererror (expects JSON).
-     */
     if ((strpos($templatefile, 'checkout') !== false || $filename == 'cart') && cloudgate_is_enabled('enable_login')) {
         $widgetHtml = cloudgate_widget_html('cart');
         $widgetJson = json_encode($widgetHtml, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
