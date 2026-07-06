@@ -14,7 +14,7 @@ function cloudgate_config()
         'description' => 'مدیریت ویجت کپچای کلودفلر(turnstile)',
         'author' => 'Amin Chavepour',
         'language' => 'farsi',
-        'version' => '1.0.0',
+        'version' => '1.3.0',
         'fields' => []
     ];
 }
